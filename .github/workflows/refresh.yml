@@ -30,13 +30,15 @@ jobs:
 
       - name: Commit if the data moved
         run: |
-          if git diff --quiet -- rates.json; then
+          git add rates.json
+          # --cached, because plain `git diff` ignores an untracked file and the
+          # very first run would look like "no change" and publish nothing.
+          if git diff --cached --quiet -- rates.json; then
             echo "No change since the last run."
             exit 0
           fi
           AS_OF=$(python -c 'import json; print(json.load(open("rates.json"))["asOf"])')
           git config user.name "monthly-rates bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add rates.json
           git commit -m "Rates as of ${AS_OF}"
           git push
