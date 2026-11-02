@@ -1,0 +1,42 @@
+name: Refresh rates
+
+on:
+  schedule:
+    # 13:40 UTC on weekdays — FRED posts the Optimal Blue update around 07:00 CST.
+    - cron: "40 13 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build rates.json
+        env:
+          FRED_KEY: ${{ secrets.FRED_KEY }}
+        run: python build_rates.py
+
+      - name: Commit if the data moved
+        run: |
+          if git diff --quiet -- rates.json; then
+            echo "No change since the last run."
+            exit 0
+          fi
+          AS_OF=$(python -c 'import json; print(json.load(open("rates.json"))["asOf"])')
+          git config user.name "monthly-rates bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rates.json
+          git commit -m "Rates as of ${AS_OF}"
+          git push
