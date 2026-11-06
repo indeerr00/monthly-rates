@@ -9,6 +9,7 @@ good rates.json in place rather than publishing junk to the app.
 import json
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -33,11 +34,26 @@ HISTORY_POINTS = 250
 
 
 def _get(url: str) -> bytes:
+    """GET with retries.
+
+    FRED's graph CSV export intermittently stalls -- a single read timeout on
+    2026-11-05 skipped a day of rates. One attempt is not enough; these are
+    cheap requests and the job runs once a day.
+    """
     req = urllib.request.Request(url, headers={"User-Agent": "monthly-rates/1.0"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        if r.status != 200:
-            raise RuntimeError(f"HTTP {r.status}")
-        return r.read()
+    last = None
+    for attempt in range(4):
+        if attempt:
+            time.sleep(5 * attempt)          # 5s, 10s, 15s
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                if r.status != 200:
+                    raise RuntimeError(f"HTTP {r.status}")
+                return r.read()
+        except Exception as e:                # noqa: BLE001 -- retry anything transient
+            last = e
+            print(f"  attempt {attempt + 1}/4 failed: {e}", file=sys.stderr)
+    raise RuntimeError(f"all 4 attempts failed: {last}")
 
 
 def _point(day: str, raw: str) -> dict | None:
